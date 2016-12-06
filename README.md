@@ -80,7 +80,7 @@ I have included a small sample data set of *P. falciparum* sequences, along with
 hmmIBD -i sample_data/sample_seq.txt -f sample_data/sample_freq.txt -o testing
 ```
 
-should give similar output to that found in *sample_data/sample.hmm.txt* and *sample_data/sample.hmm_fract.txt*.
+should give similar output to that found in *sample_data/testing.hmm.txt* and *sample_data/testing.hmm_fract.txt*.
 
 AUTHOR
 
