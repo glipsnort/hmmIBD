@@ -25,10 +25,10 @@ int main(int argc, char **argv) {
   const double fit_thresh_dpi = .001;
   const double fit_thresh_dk = .1;
   const double fit_thresh_drelk = .001;
-  const double k_rec_init = 1.0;          // starting value for N generation parameter
 
   /* end user-settable parameters */
-  double k_rec;  // recombination coefficient (= effective number of meioses)
+  double k_rec_init = 1.0;          // starting value for N generation parameter
+  double k_rec;  // working value for same
   const int max_all = 8;
   int niter = 5;    // maximum number of iterations of fit; can be overridden with option -n
   int max_snp = 30000;
@@ -51,21 +51,21 @@ int main(int argc, char **argv) {
   int *nmiss_bypair=NULL, totall, *start_chr=NULL, *end_chr=NULL, is, maxlen;
   int **use_pair=NULL, *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
   int ntri=0, ibad, nbad, start_pos, ex_all=0, majall, last_snp, c, iflag, oflag;
-  int freq_flag, fpos=0, fchr=0, iter, ntrans, nflag, finish_fit, bflag, gflag;
-  int prev_chrom, ngood;
+  int freq_flag, fpos=0, fchr=0, iter, ntrans, mflag, finish_fit, bflag, gflag;
+  int prev_chrom, ngood, nflag;
 
   pinit[0] = 0.5;  // flat prior
   pinit[1] = 0.5;
 
   char usage_string[512];
   strcpy(usage_string, "Usage: hmmIBD -i <input filename> -o <output filename>");
-  strcat(usage_string, " [-n <max fit iteration>]\n");
+  strcat(usage_string, " [-m <max fit iteration>]\n");
   strcat(usage_string, "     [-f <allele frequency file>] [-b <file with samples to skip>]");
-  strcat(usage_string, "  [-g <file with sample pairs to use>]\n");
+  strcat(usage_string, "  [-g <file with sample pairs to use>] [-n <fixed number of generations>]\n");
 
   opterr = 0;
-  nflag = iflag = oflag = freq_flag = bflag = gflag = 0;
-  while ( (c = getopt(argc, argv, ":f:i:o:n:b:g:")) != -1) {
+  mflag = iflag = oflag = freq_flag = bflag = gflag = nflag = 0;
+  while ( (c = getopt(argc, argv, ":f:i:o:n:b:g:n:")) != -1) {
     switch(c) {
     case 'f':
       freq_flag = 1;
@@ -79,9 +79,13 @@ int main(int argc, char **argv) {
       gflag = 1;
       strcpy(good_file, optarg);
       break;
+    case 'm':
+      mflag = 1;
+      niter = strtol(optarg, NULL, 10);
+      break;
     case 'n':
       nflag = 1;
-      niter = strtol(optarg, NULL, 10);
+      k_rec_init = strtod(optarg, NULL);
       break;
     case 'i':
       iflag = 1;
@@ -262,7 +266,8 @@ int main(int argc, char **argv) {
   fprintf(stdout, "Input file: %s\n", data_file);
   fprintf(stdout, "Frequency file: ");
   if (freq_flag == 1) {fprintf(stdout, "%s\n", freq_file);}
-  else {fprintf(stdout, "none\n");}
+  else {fprintf(stdout, "None. Calculated from data.\n");}
+  if (nflag == 1) {fprintf(stdout, "Number of generations fixed at %.2f\n", k_rec_init);}
   npair = nsample_use * (nsample_use-1) / 2;
   fprintf(stdout, "nsample: %d\t used: %d expected pairs: %d\n", nsample, nsample_use, 
 	  npair);
@@ -473,6 +478,10 @@ int main(int argc, char **argv) {
 	last_krec = k_rec = k_rec_init;
 	finish_fit = 0;
 	for (iter = 0; iter < niter; iter++) {
+	  if (nflag == 1) {
+	    // user-set fixed value of k_rec
+	    k_rec = k_rec_init;
+	  }
 	  trans_obs = trans_pred = ntrans = 0;
 	  seq_ibd = seq_dbd = count_ibd_fb = count_dbd_fb = seq_ibd_fb = seq_dbd_fb = 0;
 	  max_phi = 0;
@@ -640,7 +649,7 @@ int main(int argc, char **argv) {
 	  if (iter < niter-1 && finish_fit == 0) {
 	    if (pi[0] < 1e-5) {pi[0] = 1e-5;}
 	    else if (pi[0] > 1- 1e-5) {pi[0] = 1 - 1e-5;}
-	    if (k_rec < 1e-5) {k_rec = 1e-5;}
+	    if (nflag != 1 && k_rec < 1e-5) {k_rec = 1e-5;}
 	  }
 	  pi[1] = 1 - pi[0];
 	  delpi = pi[0] - last_pi;
@@ -652,7 +661,7 @@ int main(int argc, char **argv) {
 
 	  // Evaluate fit
 	  if (fabs(delpi) < fit_thresh_dpi && 
-	       (fabs(delk) < fit_thresh_dk || fabs(delk/k_rec) < fit_thresh_drelk) ) {
+	       (nflag == 1 || fabs(delk) < fit_thresh_dk || fabs(delk/k_rec) < fit_thresh_drelk) ) {
 	    finish_fit = 1;
 	  }
 	}  // end parameter fitting loop
