@@ -37,9 +37,10 @@ Required options:
 
 Optional options:
 - -f: File of allele frequencies for the sample population. Format: tab-delimited, no header, one variant per row. Line format: `<chromosome (int)> <position (bp, int)> <allele 1 freq> <all 2 freq> [<all 3 freq>] ...` The genotype and frequency files must contain exactly the same variants, in the same order. If no file is supplied, allele frequencies are calculated from the input data file.
-- -n: Maximum number of fit iterations (defaults to 5).
+- -m: Maximum number of fit iterations (defaults to 5).
 - -b: File of sample ids to exclude from all analysis. Format: no header, one id (string) per row. (Note: b stands for "bad samples".)
 - -g: File of sample pairs to analyze; all others are not processed by the HMM 	(but are still used to calculate allele frequencies). Format: no header,	tab-delimited, two sample ids (strings) per row. (Note: "g" stands for 	"good pairs".)
+- -n: Fixed number of generations (floating point). Turns off fitting for that parameter and sets it to the input value. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Using "-n 1" or -n 2" will force the program to assume little recombination, and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large. (Note: the output will report a different number of generations than you input. This output is the result of the last iteration of the fit; internally, the value is reset every iteration to that specified by the user.)
 
 ## Input file formats
 
