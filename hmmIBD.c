@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
 
   opterr = 0;
   mflag = iflag = oflag = freq_flag = bflag = gflag = nflag = 0;
-  while ( (c = getopt(argc, argv, ":f:i:o:n:b:g:n:")) != -1) {
+  while ( (c = getopt(argc, argv, ":f:i:o:m:b:g:n:")) != -1) {
     switch(c) {
     case 'f':
       freq_flag = 1;
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "option %c requires an argument\n", optopt);
       exit(0);
     case '?':
-      fprintf(stderr, "%s",usage_string);
+      fprintf(stderr, "Unknown option\n%s",usage_string);
       exit(0);
     }
   }
