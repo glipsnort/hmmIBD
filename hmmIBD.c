@@ -201,6 +201,7 @@ int main(int argc, char **argv) {
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\n");
   
+  // Check line size
   fgets(newLine, linesize, inf); // header
   while (strlen(newLine) > linesize-2) {
     fseek(inf, 0, 0);
@@ -238,6 +239,7 @@ int main(int argc, char **argv) {
     assert(discord[isamp] != NULL);
   }
   
+  // Parse header, store sample names after screening for excluded sample ids
   isamp = nsample_use = 0;
   prev_chrom = -1;
   for (running = head, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
