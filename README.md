@@ -3,7 +3,9 @@ A hidden Markov model for detecting segments of shared ancestry (identity by des
 
 ## Overview
 
-The program *hmmIBD* implements a hidden Markov model (HMM) for detecting genomic regions that are identical by descent (IBD) for pairs of haploid samples. It was written to find large IBD regions in sequenced haploid *P. falciparum* genomes, but it can be applied to other organisms (including phased diploids) and can find shorter IBD regions as well. The program takes as input a file of genotype calls for a set of samples, assumed to be from a single population. The details of the model and program are described in a manuscript in preparation.
+The program *hmmIBD* implements a hidden Markov model (HMM) for detecting genomic regions that are identical by descent (IBD) for pairs of haploid samples. It was written to find large IBD regions in sequenced haploid *P. falciparum* genomes, but it can be applied to other organisms (including phased diploids) and can find shorter IBD regions as well. The program takes as input a file of genotype calls for a set of samples, assumed to be from a single population. As of version 2.0.0, the program will also accept a second file of genotype calls, which are treated as coming from a different population with different allele frequencies. For a single population, all pairwise comparisons are made between the samples (unless otherwise specified with a -b or -g flag.) For two populations, all comparisons are made between samples from different populations. 
+
+The details of the model and program are described in a manuscript in preparation. 
 
 Under the HMM, each variant site is assumed to be in one of two hidden states, IBD or not-IBD.  To calculate the probability of each state, estimates of the allele frequencies for every variant are required.  By default, they are calculated from the input data, but a separate file of allele frequencies can be supplied by the user (preferable if analyzing a subset of the data).
 
@@ -37,10 +39,12 @@ Required options:
 
 Optional options:
 - -f: File of allele frequencies for the sample population. Format: tab-delimited, no header, one variant per row. Line format: `<chromosome (int)> <position (bp, int)> <allele 1 freq> <all 2 freq> [<all 3 freq>] ...` The genotype and frequency files must contain exactly the same variants, in the same order. If no file is supplied, allele frequencies are calculated from the input data file.
+- -I: File of genotype data from a second population; same format as for -i. (added in 2.0.0)
+- -F: File of allele frequencies for the second population; same format as for -f. (added in 2.0.0)
 - -m: Maximum number of fit iterations (defaults to 5).
 - -b: File of sample ids to exclude from all analysis. Format: no header, one id (string) per row. (Note: b stands for "bad samples".)
 - -g: File of sample pairs to analyze; all others are not processed by the HMM 	(but are still used to calculate allele frequencies). Format: no header,	tab-delimited, two sample ids (strings) per row. (Note: "g" stands for 	"good pairs".)
-- -n: Fixed number of generations (floating point). Turns off fitting for that parameter and sets it to the input value. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Using "-n 1" or -n 2" will force the program to assume little recombination, and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large. (Note: the output will report a different number of generations than you input. This output is the result of the last iteration of the fit; internally, the value is reset every iteration to that specified by the user.)
+- -n: Cap on the number of generations (floating point). Sets the maximum value for that parameter in the fit. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Specifying a small value will force the program to assume little recombination and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large.
 
 ## Input file formats
 
@@ -48,7 +52,7 @@ Format for genotype file: tab-delimited text file, with one single nucleotide po
 
 ## Output files
 
-Two output files are produced. The file *\<filename\>.hmm.txt* contains a list of all segments (where a segment is one or more contiguous variant sites in the same state) for each sample pair, and the assigned state (IBD or not-IBD) for each. These segments represent the most probable state assignments.
+Two output files are produced. The file *\<filename\>.hmm.txt* contains a list of all segments (where a segment is one or more contiguous variant sites in the same state) for each sample pair, the assigned state (IBD or not-IBD) for each, and the number of variants covered by the segment; note that an assigned state of 0 means IBD, while 1 means not-IBD. These segments represent the most probable state assignments.
 
 The file *\<filename\>.hmm_fract.txt* summarizes results for each sample pair (including some information that may be of interest only to me). If you are only interested in the fraction of the genome that is IBD between a pair of samples, look at the last column (**fract_sites_IBD**). Columns:
 
@@ -75,13 +79,17 @@ The following variables control program execution in various ways, and can be ea
 
 ## Sample data
 
-I have included a small sample data set of *P. falciparum* sequences, along with an allele frequency file (which was calculated using a larger sample than that included here) and sample output. Executing the command 
+I have included 2 small sample data set of *P. falciparum* sequences, drawn from the Pf3K Cambodia and Ghana samples. Each data file has genotype data for chromosomes 1-3 from 10 samples. The corresponding frequency files contain allele frequency information for the same variants based on the entire Pf3K dataset for that country. Executing the commands 
 
 ```
-hmmIBD -i sample_data/sample_seq.txt -f sample_data/sample_freq.txt -o testing
+hmmIBD -i samp_data/pf3k_Cambodia_13.txt -f samp_data/freqs_pf3k_Cambodia_13.txt -o mytest_1pop
 ```
 
-should give similar output to that found in *sample_data/testing.hmm.txt* and *sample_data/testing.hmm_fract.txt*.
+```
+hmmIBD -i samp_data/pf3k_Cambodia_13.txt -f samp_data/freqs_pf3k_Cambodia_13.txt -I samp_data/pf3k_Ghana_13.txt -F samp_data/freqs_pf3k_Ghana_13.txt -o mytest_2pop
+```
+
+should give similar results to that found in the output files in *samp_data/*.
 
 AUTHOR
 
