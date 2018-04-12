@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
   const int max_all = 8;
   int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
   int max_snp = 30000;
-  char data_file1[128], data_file2[128];
+  char data_file1[128], data_file2[128], *erp;
   char out_filebase[128], freq_file1[128], freq_file2[128], good_file[128], bad_file[128];
   int max_bad = 100;
   int max_good = 200;
@@ -91,7 +91,11 @@ int main(int argc, char **argv) {
       break;
     case 'm':
       mflag = 1;
-      niter = strtol(optarg, NULL, 10);
+      niter = strtol(optarg, &erp, 10);
+      if (optarg == erp) {
+	fprintf(stderr, "Invalid argument %s\n", optarg);
+	exit(EXIT_FAILURE);
+      }
       break;
     case 'n':
       nflag = 1;
@@ -151,7 +155,10 @@ int main(int argc, char **argv) {
     freq1[isnp] = malloc((max_all+1) * sizeof(double));
   }
   ffreq1 = malloc((max_all+1) * sizeof(double));
-  for (chr = 1; chr <= nchrom; chr++) {start_chr[chr] = 10000000;}
+  for (chr = 1; chr <= nchrom; chr++) {
+    start_chr[chr] = 10000000;
+    end_chr[chr] = -1;
+  }
   for (isamp = 0; isamp < max_bad; isamp++) {
     bad_samp[isamp] = malloc(64 * sizeof(char));
   }
@@ -477,9 +484,19 @@ int main(int argc, char **argv) {
 
     // Parse line, pop1
     for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
-      if (itoken == 0) {chr = strtol(token, NULL, 10);}
+      if (itoken == 0) {
+	chr = strtol(token, &erp, 10);
+	if (token == erp) {
+	  fprintf(stderr, "Invalid chromosome %s (must be integer)\n", token);
+	  exit(EXIT_FAILURE);
+	}
+      }
       else if (itoken == 1) {
-	pos[nsnp] = strtol(token, NULL, 10);
+	pos[nsnp] = strtol(token, &erp, 10);
+	if (token == erp) {
+	  fprintf(stderr, "Invalid position %s (must be integer)\n", token);
+	  exit(EXIT_FAILURE);
+	}
 	if ( (chr == prev_chrom && pos[nsnp] < pos[nsnp-1]) || chr < prev_chrom) {
 	  fprintf(stderr, "Variants are out of order\n");
 	  exit(EXIT_FAILURE);
@@ -491,7 +508,11 @@ int main(int argc, char **argv) {
 	}
       }
       else {
-	all = strtol(token, NULL, 10);
+	all = strtol(token, &erp, 10);
+	if (token == erp) {
+	  fprintf(stderr, "Invalid allele %s (must be integer)\n", token);
+	  exit(EXIT_FAILURE);
+	}
 	if (all > max_all) {
 	  killit = 1;
 	  ex_all++;
@@ -511,16 +532,30 @@ int main(int argc, char **argv) {
     // Parse line, pop2
     if (iflag2 == 1) {
       for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
-	if (itoken == 0) {chr2 = strtol(token, NULL, 10);}
+	if (itoken == 0) {
+	  chr2 = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid chromosome %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
+	}
 	else if (itoken == 1) {
-	  pos2 = strtol(token, NULL, 10);
+	  pos2 = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid position %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
 	  if (pos2 != pos[nsnp] || chr2 != chr) {
 	    fprintf(stderr, "Data files do not agree on SNPs\n");
 	    exit(EXIT_FAILURE);
 	  }
 	}
 	else {
-	  all = strtol(token, NULL, 10);
+	  all = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid allele %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
 	  if (all > max_all) {
 	    killit = 1;
 	    ex_all++;
@@ -548,8 +583,20 @@ int main(int argc, char **argv) {
       fgets(newLine1, linesize, ff1);
       fpos = fchr = 0;
       for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
-      	if (itoken == 0) {fchr = strtol(token, NULL, 10);}
-      	else if (itoken == 1) {fpos = strtol(token, NULL, 10);}
+      	if (itoken == 0) {
+	  fchr = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid chromosome %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
+	}
+      	else if (itoken == 1) {
+	  fpos = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid position %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
+	}
       	else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, NULL);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
@@ -569,8 +616,20 @@ int main(int argc, char **argv) {
       fgets(newLine2, linesize, ff2);
       fpos = fchr = 0;
       for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
-      	if (itoken == 0) {fchr = strtol(token, NULL, 10);}
-      	else if (itoken == 1) {fpos = strtol(token, NULL, 10);}
+      	if (itoken == 0) {
+	  fchr = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid chromosome %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
+	}
+      	else if (itoken == 1) {
+	  fpos = strtol(token, &erp, 10);
+	  if (token == erp) {
+	    fprintf(stderr, "Invalid position %s (must be integer)\n", token);
+	    exit(EXIT_FAILURE);
+	  }
+	}
       	else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, NULL);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
@@ -713,7 +772,7 @@ int main(int argc, char **argv) {
 	  max_phi = 0;
 	  for (chr = 1; chr <= nchrom; chr++) {
 	    nsite = 0;
-	    if (end_chr[chr] == 0) {continue;}
+	    if (end_chr[chr] < 0) {continue;}
 	    chrlen = pos[end_chr[chr]] - pos[start_chr[chr]];
 	    for (isnp = start_chr[chr]; isnp <= end_chr[chr]; isnp++) {
 	      snp_ind = isnp - start_chr[chr];
@@ -858,7 +917,7 @@ int main(int argc, char **argv) {
 		    else {seq_dbd += add_seq;}
 		    // end one and start another
 		    fprintf(outf, "\t%d\t%d\t%d\n", 
-			    pos[isnp - 1 + start_chr[chr]], traj[isnp-1], isnp - start_snp + 1);
+			    pos[isnp - 1 + start_chr[chr]], traj[isnp-1], isnp - start_snp);
 		    fprintf(outf, "%s\t%s\t%d\t%d", sample1[isamp], 
 			    sample2[jsamp], chr, pos[isnp + start_chr[chr]]);
 		    start_snp = isnp;
