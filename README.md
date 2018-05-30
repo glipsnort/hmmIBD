@@ -58,7 +58,7 @@ The file *\<filename\>.hmm_fract.txt* summarizes results for each sample pair (i
 
 - **N_informative_sites**: Number of sites with data for both samples, and with at least one copy of the minor allele.
 - **discordance**: Fraction of informative sites that have different alleles in the two samples.
-- **log_p**: natural logarithm of the probability of the final set of state assignments (calculated with the Viterbi algorithm).
+- **log_p**: natural logarithm of the probability of the final set of state assignments and the set of observations (calculated with the Viterbi algorithm).
 - **N_fit_iteration**: Number of iterations carried out in EM fitting. 
 - **N_generation**: Estimated number of generations of recombination (1 of 2 free parameters in fit).
 - **N_state_transition**: Number of transitions between IBD and not-IBD states across entire genome.
