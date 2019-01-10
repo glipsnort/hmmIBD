@@ -59,6 +59,7 @@ int main(int argc, char **argv) {
   int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp, c, iflag1, iflag2, oflag;
   int freq_flag1, freq_flag2, fpos=0, fchr=0, iter, ntrans, mflag, finish_fit, bflag, gflag;
   int prev_chrom, ngood, nflag, nskipped=0, nsite, jstart;
+  int count_ibd_vit, count_dbd_vit;
 
   pinit[0] = 0.5;  // flat prior
   pinit[1] = 0.5;
@@ -251,7 +252,7 @@ int main(int argc, char **argv) {
   pf = fopen(file, "w");
   if (pf == NULL) {fprintf(stderr, "Could not open output file %s\n", file); exit(EXIT_FAILURE);}
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
-  fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\n");
+  fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
   
   // Check line size
   fgets(newLine1, linesize, inf1); // header1
@@ -769,6 +770,7 @@ int main(int argc, char **argv) {
 	for (iter = 0; iter < niter; iter++) {
 	  trans_obs = trans_pred = ntrans = 0;
 	  seq_ibd = seq_dbd = count_ibd_fb = count_dbd_fb = seq_ibd_fb = seq_dbd_fb = 0;
+	  count_ibd_vit = count_dbd_vit = 0;
 	  max_phi = 0;
 	  for (chr = 1; chr <= nchrom; chr++) {
 	    nsite = 0;
@@ -873,7 +875,7 @@ int main(int argc, char **argv) {
 		(alpha[0][snp_ind] * beta[0][snp_ind] + alpha[1][snp_ind] * beta[1][snp_ind]);
 	      count_ibd_fb += p_ibd;
 	      count_dbd_fb += (1-p_ibd);
-	      if (snp_ind < last_snp-1) {
+	      if (snp_ind < last_snp) {
 		isnp = snp_ind + start_chr[chr];
 		delpos = pos[isnp+1] - pos[isnp];
 		ptrans = k_rec * rec_rate * delpos;
@@ -928,6 +930,11 @@ int main(int argc, char **argv) {
 		if (traj[isnp] == 0) {seq_ibd += add_seq;}
 		else {seq_dbd += add_seq;}
 		fprintf(outf, "\t%d\t%d\t%d\n", pos[end_chr[chr]], traj[isnp], isnp - start_snp + 1);
+		// Tabulate sites by state for Viterbi trajectory
+		for (isnp = 0; isnp < end_chr[chr] - start_chr[chr] + 1; isnp++) {
+		  if (traj[isnp] == 0) {count_ibd_vit++;}
+		  else {count_dbd_vit++;}
+		}
 	      }
 	    }
 	  }  // end chrom loop
@@ -964,10 +971,10 @@ int main(int argc, char **argv) {
 	  }
 	}  // end parameter fitting loop
 
-	fprintf(pf, "%s\t%s\t%d\t%.4f\t%.5e\t%d\t%.3f\t%d\t%.5f\t%.5f\n", 
+	fprintf(pf, "%s\t%s\t%d\t%.4f\t%.5e\t%d\t%.3f\t%d\t%.5f\t%.5f\t%.5f\n", 
 		sample1[isamp], sample2[jsamp], sum, discord[isamp][jsamp],
 		max_phi, iter, k_rec, ntrans, (double) seq_ibd / (seq_ibd + seq_dbd),
-		count_ibd_fb / (count_ibd_fb + count_dbd_fb));
+		count_ibd_fb / (count_ibd_fb + count_dbd_fb), (double) count_ibd_vit / (count_ibd_vit + count_dbd_vit));
       }   // end if use pair
       ipair++;
       //      if (ipair%1000 == 0) {fprintf(stdout, "Starting pair %d\n", ipair);}
