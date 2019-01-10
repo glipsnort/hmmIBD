@@ -64,6 +64,7 @@ The file *\<filename\>.hmm_fract.txt* summarizes results for each sample pair (i
 - **N_state_transition**: Number of transitions between IBD and not-IBD states across entire genome.
 - **seq_shared_best_traj**: Fraction of sequence IBD based on the best state assignment, calculated as (seq in IBD segments) / (seq in IBD segments + seq in not-IBD segments). Segments in which there is a state transition between IBD and not-IBD are ignored. 
 - **fract_sites_IBD**: Fraction of variant sites called IBD calculated for all possible state assignments, weighted by their probability (equal to the marginal posterior probability of the IBD state calculated with the forward-backward algorithm).
+- **fract_vit_sites_IBD**: Fraction of variant sites called IBD calculated for the best state assignment (i.e. the result of the Viterbi algorithm, as in seq_shared_best_traj).
 
 
 ## Some variables you might want to change
