@@ -25,12 +25,12 @@ which should yield the executable file *hmmIBD*, but other compilers should work
 
 ## Execution
 
-hmmIBD is run from the command line. It requires the user to supply two options when invoked; it can also take four optional arguments:
+hmmIBD is run from the command line. It requires the user to supply two options when invoked; it can also take seven optional arguments:
 
 ```
-hmmIBD -i <input filename> -o <output filename> [-n <max fit iteration>]
-     [-f <allele frequency file>] [-b <file with samples to skip>]  
-     [-g <file with sample pairs to use>]
+hmmIBD -i <input filename (for pop1, if using 2 pops)> -o <output filename> 
+     [-I <input file, pop2>] [-f <allele frequency file (pop1)>] [-F <allele freq file (pop2)>]
+     [-b <file with samples to skip>] [-m <max fit iteration>] [-n <max N generation>] [-g <file with sample pairs to use>]
 ```
 Required options:
 - -i: File of genotype data. See below for format.
