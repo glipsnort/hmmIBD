@@ -13,6 +13,8 @@ The model has two free parameters, (1) the fraction of the genome that is IBD, a
 
 The Viterbi algorithm calculates the best single set of state assignments given data under the HMM and outputs that set. The forward-backward algorithm sums the fraction of the genome that is IBD over all possible state assignments given data under the HMM, weighting each by the probability of that set of states. If you are interested in the IBD fraction, rather than precisely which parts of the genome are IBD, this is probably the output you want (see **fract_sites_IBD** in the Output section).
 
+It may be a good idea to thin the variant sites being supplied to hmmIBD for several reasons. First, variants with very low or zero minor allele frequency contribute little to IBD determination but do waste compute time. Second, very closely spaced sites will (be default) be automatically thinned by hmmIBD and not in an intelligent way, in an effort to avoid mutations (or sequencing errors) that extend beyond a single base pair. Third, if the density of sites varies a lot across the genome, hmmIBD's power to detect short IBD segments will be higher where site density is higher. The repository includes a Python script (thin_sites.py) that implements a simple scheme for thinning sites.
+
 ## Installation
 
 The C source code must be compiled before use, and requires no special libraries. Using the current OS X built-in C compiler, I compile it with the command
