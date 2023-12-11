@@ -5,7 +5,7 @@ A hidden Markov model for detecting segments of shared ancestry (identity by des
 
 The program *hmmIBD* implements a hidden Markov model (HMM) for detecting genomic regions that are identical by descent (IBD) for pairs of haploid samples. It was written to find large IBD regions in sequenced haploid *P. falciparum* genomes, but it can be applied to other organisms (including phased diploids) and can find shorter IBD regions as well. The program takes as input a file of genotype calls for a set of samples, assumed to be from a single population. As of version 2.0.0, the program will also accept a second file of genotype calls, which are treated as coming from a different population with different allele frequencies. For a single population, all pairwise comparisons are made between the samples (unless otherwise specified with a -b or -g flag.) For two populations, all comparisons are made between samples from different populations. 
 
-The details of the model and program are described in a manuscript in preparation. 
+The details of the model and program are described in this publication: Schaffner, S.F., Taylor, A.R., Wong, W. et al. hmmIBD: software to infer pairwise identity by descent between haploid genotypes. Malar J 17, 196 (2018). https://doi.org/10.1186/s12936-018-2349-7
 
 Under the HMM, each variant site is assumed to be in one of two hidden states, IBD or not-IBD.  To calculate the probability of each state, estimates of the allele frequencies for every variant are required.  By default, they are calculated from the input data, but a separate file of allele frequencies can be supplied by the user (preferable if analyzing a subset of the data).
 
