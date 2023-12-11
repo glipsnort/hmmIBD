@@ -77,7 +77,7 @@ The following variables control program execution in various ways, and can be ea
 - *max_discord* -- maximum fraction of informative sites with discordant genotypes between the two samples; used to skip unrelated pairs .
 - *min_discord* -- minimum discordance, useful for skipping identical pairs.
 - *nchrom* -- number of chromosomes in genome (14 for P. falciparum and P. vivax)
-- *min_snp_sep* -- number of bp separation required between SNPs, to avoid mutations spanning >1 bp (default = 10).
+- *min_snp_sep* -- number of bp separation required between SNPs, to avoid mutations spanning >1 bp (default = 5).
 
 ## Sample data
 
