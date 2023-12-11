@@ -30,7 +30,7 @@ hmmIBD is run from the command line. It requires the user to supply two options 
 ```
 hmmIBD -i <input filename (for pop1, if using 2 pops)> -o <output filename> 
      [-I <input file, pop2>] [-f <allele frequency file (pop1)>] [-F <allele freq file (pop2)>]
-     [-b <file with samples to skip>] [-m <max fit iteration>] [-n <max N generation>] [-g <file with sample pairs to use>]
+     [-b <file with samples to skip>] [-m <max fit iteration>] [-n <max N generation>] [-g <file with sample pairs to use>] [-r <fixed IBD prior>]
 ```
 Required options:
 - -i: File of genotype data. See below for format.
@@ -45,6 +45,7 @@ Optional options:
 - -b: File of sample ids to exclude from all analysis. Format: no header, one id (string) per row. (Note: b stands for "bad samples".)
 - -g: File of sample pairs to analyze; all others are not processed by the HMM 	(but are still used to calculate allele frequencies). Format: no header,	tab-delimited, two sample ids (strings) per row. (Note: "g" stands for 	"good pairs".)
 - -n: Cap on the number of generations (floating point). Sets the maximum value for that parameter in the fit. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Specifying a small value will force the program to assume little recombination and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large.
+- -r: Supplies a fixed value of the IBD fraction (fract_sites_IBD) used to determine IBD segments. This is useful when using hmmIBD to detect or characterize selective sweeps. Without this, IBD segments are more likely to be detected when comparing relatives, since the overall relatedness biases the probability of detecting any one segment.  
 
 ## Input file formats
 
