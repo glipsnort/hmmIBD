@@ -51,7 +51,7 @@ Optional options:
 
 ## Input file formats
 
-Format for genotype file: tab-delimited text file, with one single nucleotide polymorphism (SNP) per line. The first two columns are the chromosome and position, followed by one sample per column. A header line, giving the sample names, is required. Genotypes are coded by number: -1 for missing data, 0 for the first allele, 1 for the second, etc. SNPs and indels (if you trust them) can thus be treated on an equal footing. The variants must be in chromosome and position order, and can have between two and eight alleles (more, if you feel like changing *max_allele* in the code).
+Format for genotype file: tab-delimited text file, with one single nucleotide polymorphism (SNP) per line. The first two columns are the chromosome and position, followed by one sample per column. A header line, giving the sample names, is required. Genotypes are coded by number: -1 for missing data, 0 for the first allele, 1 for the second, etc. SNPs and indels (if you trust them) can thus be treated on an equal footing. The variants must be in chromosome and position order, and can have between two and eight alleles (more, if you feel like changing *max_allele* in the code). The package includes a Python script, vcf2hmm.py, that extracts genotypes from VCF files into the appropriate format. It takes a VCF file name and an output filename (the latter without extensions) as input, along with optional file names that give lists of samples and sites to include. It outputs the genotypes into *filename*_seq.txt, and also outputs the alleles for each site (*filename*_allele.txt) and the allele frequencies (*filename*_freq.txt).
 
 ## Output files
 
