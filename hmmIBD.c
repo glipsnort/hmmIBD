@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
   /* end user-settable parameters */
   double k_rec_init = 1.0;          // starting value for N generation parameter
   double k_rec, k_rec_max = 0.;  // working and max value for same
-  const int max_freq_size = 500;     // used to create local array of freqs when reading in or calculating
+  const int max_all = 8;
   int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
   int max_snp = 30000;    // starting size for arrays -- increases if needed
   char data_file1[128], data_file2[128], *erp;
@@ -49,12 +49,12 @@ int main(int argc, char **argv) {
   double **freq1=NULL, **freq2=NULL, *ffreq1=NULL, *ffreq2=NULL, xisum, xi[2][2], trans_pred, trans_obs;
   double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
   double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
-  double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delprob, delk, maxfreq;
+  double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delk, maxfreq, delprob;
   FILE *inf1=NULL, *inf2=NULL, *outf=NULL, *pf=NULL, *ff1=NULL, *ff2=NULL;
   int *diff=NULL, *same_min=NULL, jsamp, *allcount1=NULL, *allcount2=NULL;
-  int *use_sample1=NULL, *use_sample2=NULL, *freq_size=NULL;
+  int *use_sample1=NULL, *use_sample2=NULL;
   int *traj, add_seq, nsample_use2;
-  int nsample_use1, nsnp, ipair, npair, isnp, *pos, *psi[2], max, iline;
+  int nsample_use1, nsnp, ipair, npair, isnp, *pos, *psi[2], max;
   int *nmiss_bypair=NULL, totall1, totall2, *start_chr=NULL, *end_chr=NULL, is, maxlen;
   int **use_pair=NULL, *nall=NULL, killit, nuse_pair=0, gi, gj, delpos;
   int ntri=0, ibad, nbad, start_snp, ex_all=0, last_snp, c, iflag1, iflag2, oflag, rflag;
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  allcount1 = malloc(max_freq_size * sizeof(int));
+  allcount1 = malloc((max_all+1) * sizeof(int));
   if (freq_flag1 == 1) {
     ff1 = fopen(freq_file1, "r");
     if (ff1 == NULL) {fprintf(stderr, "Could not open frequency file %s\n", freq_file1); exit(EXIT_FAILURE);}
@@ -153,13 +153,15 @@ int main(int argc, char **argv) {
   good_pair[1] = malloc(max_good * sizeof(char*));
   newLine1 = malloc((linesize+1) * sizeof(char));
   assert(newLine1 != NULL);
-  freq_size = malloc(max_snp * sizeof(int));
   nall = malloc(max_snp * sizeof(int));
   freq1 = malloc(max_snp * sizeof(double*));
   pos = malloc(max_snp * sizeof(int));
   start_chr = malloc((nchrom+1) * sizeof(int));
   end_chr = calloc(nchrom+1, sizeof(int));
-  ffreq1 = malloc(max_freq_size * sizeof(double));
+  for (isnp = 0; isnp < max_snp; isnp++) {
+    freq1[isnp] = malloc((max_all+1) * sizeof(double));
+  }
+  ffreq1 = malloc((max_all+1) * sizeof(double));
   for (chr = 1; chr <= nchrom; chr++) {
     start_chr[chr] = 10000000;
     end_chr[chr] = -1;
@@ -172,9 +174,12 @@ int main(int argc, char **argv) {
     good_pair[1][isamp] = calloc(64, sizeof(char));
   }
   if (iflag2 == 1) {
-    allcount2 = malloc(max_freq_size * sizeof(int));
+    allcount2 = malloc((max_all+1) * sizeof(int));
     freq2 = malloc(max_snp * sizeof(double*));
-    ffreq2 = malloc(max_freq_size * sizeof(double));
+    for (isnp = 0; isnp < max_snp; isnp++) {
+      freq2[isnp] = malloc((max_all+1) * sizeof(double));
+    }
+    ffreq2 = malloc((max_all+1) * sizeof(double));
   }
   else {
     allcount2 = allcount1;
@@ -383,12 +388,15 @@ int main(int argc, char **argv) {
     // Single pop
     nsample_use2 = nsample_use1;
   }
-
+  
   fprintf(stdout, "Maximum fit iterations allowed: %d\n", niter);
   fprintf(stdout, "Minimum marker spacing (bp): %d\n", min_snp_sep);
   fprintf(stdout, "Minimum informative markers: %d\n", min_inform);
-  fprintf(stdout, "Pairs accepted with discordance in range (%.2f%%, %.2f%%)\n", 
-	  min_discord*100, max_discord*100);
+  if (rflag == 1) {
+    fprintf(stdout, "IBD fract fixed at %.2f for Viterbi calculation\n", pinit[0]);
+  }
+    //fprintf(stdout, "Pairs accepted with discordance in range (%.2f%%, %.2f%%)\n", 
+    //min_discord*100, max_discord*100);
   fprintf(stdout, "Genotyping error rate: %.2f%%\n", eps*100);
   if (iflag2 == 1) {
     fprintf(stdout, "Input files: %s and %s\n", data_file1, data_file2);
@@ -440,7 +448,6 @@ int main(int argc, char **argv) {
   }
 
   nsnp = 0;
-  iline = -1;
   while (fgets(newLine1, linesize, inf1) != NULL) {
     newLine1[strcspn(newLine1, "\r\n")] = 0;  
     if (iflag2 == 1) {
@@ -448,8 +455,6 @@ int main(int argc, char **argv) {
       newLine2[strcspn(newLine2, "\r\n")] = 0;  
     }
     if (nsnp == max_snp) {
-      freq_size = realloc(freq_size, 2*max_snp*sizeof(int));
-      assert(freq_size != NULL);
       nall = realloc(nall, 2*max_snp*sizeof(int));
       assert(nall != NULL);
       pos = realloc(pos, 2*max_snp*sizeof(int));
@@ -461,7 +466,7 @@ int main(int argc, char **argv) {
       freq1 = realloc(freq1, 2*max_snp*sizeof(double*));
       assert(freq1 != NULL);
       for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
-	freq1[isnp] = malloc(freq_size[isnp] * sizeof(double));
+	freq1[isnp] = malloc((max_all+1) * sizeof(double));
 	assert(freq1[isnp] != NULL);
       }
       if (iflag2 == 1) {
@@ -472,7 +477,7 @@ int main(int argc, char **argv) {
 	freq2 = realloc(freq2, 2*max_snp*sizeof(double*));
 	assert(freq2 != NULL);
 	for (isnp = max_snp; isnp < 2*max_snp; isnp++) {
-	  freq2[isnp] = malloc(freq_size[isnp] * sizeof(double));
+	  freq2[isnp] = malloc((max_all+1) * sizeof(double));
 	  assert(freq2[isnp] != NULL);
 	}
       }   // end if iflag2 == 1
@@ -482,10 +487,8 @@ int main(int argc, char **argv) {
       }
       max_snp *= 2;
     }  // end reallocating space
-    iline++;
     totall1 = totall2 = killit = 0;
-    for (iall = 0; iall < max_freq_size; iall++) {allcount1[iall] = allcount2[iall] = 0;}
-    freq_size[nsnp] = 0;   // this will keep track of the size needed to hold the frequencies for this snp
+    for (iall = 0; iall <= max_all; iall++) {allcount1[iall] = allcount2[iall] = 0;}
       
     // Parse line, pop1
     for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
@@ -518,13 +521,10 @@ int main(int argc, char **argv) {
 	  fprintf(stderr, "Invalid allele %s (must be integer)\n", token);
 	  exit(EXIT_FAILURE);
 	}
-	if (all >= max_freq_size) {
+	if (all > max_all) {
 	  killit = 1;
 	  ex_all++;
 	  break;
-	}
-	if (all >= freq_size[nsnp]) {
-	  freq_size[nsnp] = all + 1;
 	}
 	geno1[itoken-2][nsnp] = all;
 	if (use_sample1[itoken-2] == 1) {
@@ -564,13 +564,10 @@ int main(int argc, char **argv) {
 	    fprintf(stderr, "Invalid allele %s (must be integer)\n", token);
 	    exit(EXIT_FAILURE);
 	  }
-	  if (all >= max_freq_size) {
+	  if (all > max_all) {
 	    killit = 1;
 	    ex_all++;
 	    break;
-	  }
-	  if (all >= freq_size[nsnp]) {
-	    freq_size[nsnp] = all + 1;
 	  }
 	  geno2[itoken-2][nsnp] = all;
 	  if (use_sample2[itoken-2] == 1) {
@@ -588,7 +585,7 @@ int main(int argc, char **argv) {
     // if reading freqs from file, read one (pop1)
     if (freq_flag1 == 1) {
       // Clear previous frequencies (since might have skipped previous snp via 'continue')
-      for (iall = 0; iall < max_freq_size; iall++) {
+      for (iall = 0; iall <= max_all; iall++) {
 	ffreq1[iall] = 0;
       }
       fgets(newLine1, linesize, ff1);
@@ -608,17 +605,7 @@ int main(int argc, char **argv) {
 	    exit(EXIT_FAILURE);
 	  }
 	}
-      	else if (itoken > 1) {
-	  all = itoken-2;
-	  if (all >= max_freq_size) {
-	    killit = 1;
-	    ex_all++;
-	    break;
-	  }
-	  if (all >= freq_size[nsnp]) {
-	    freq_size[nsnp] = all + 1;
-	  }
-	  ffreq1[all] = strtod(token, NULL);}
+      	else if (itoken > 1) {ffreq1[itoken-2] = strtod(token, NULL);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
       	fprintf(stderr, 
@@ -631,7 +618,7 @@ int main(int argc, char **argv) {
     // if reading freqs from file, read one (pop2)
     if (freq_flag2 == 1) {
       // Clear previous frequencies (since might have skipped previous snp via 'continue')
-      for (iall = 0; iall < max_freq_size; iall++) {
+      for (iall = 0; iall <= max_all; iall++) {
 	ffreq2[iall] = 0;
       }
       fgets(newLine2, linesize, ff2);
@@ -651,17 +638,7 @@ int main(int argc, char **argv) {
 	    exit(EXIT_FAILURE);
 	  }
 	}
-      	else if (itoken > 1) {
-	  all = itoken-2;
-	  if (all >= max_freq_size) {
-	    killit = 1;
-	    ex_all++;
-	    break;
-	  }
-	  if (all >= freq_size[nsnp]) {
-	    freq_size[nsnp] = all + 1;
-	  }
-	  ffreq2[all] = strtod(token, NULL);}
+      	else if (itoken > 1) {ffreq2[itoken-2] = strtod(token, NULL);}
       }
       if (fchr != chr || fpos != pos[nsnp]) {
       	fprintf(stderr, 
@@ -675,8 +652,7 @@ int main(int argc, char **argv) {
     majall = -1;
     maxfreq = 0;
     // process this variant -- calculate allele frequencies for each pop
-    freq1[nsnp] = malloc(freq_size[nsnp] * sizeof(double)); 
-    for (iall = 0; iall < freq_size[nsnp]; iall++) {
+    for (iall = 0; iall <= max_all; iall++) {
       if (freq_flag1 == 1) {
 	freq1[nsnp][iall] = ffreq1[iall];
       }
@@ -684,7 +660,6 @@ int main(int argc, char **argv) {
 	freq1[nsnp][iall] = (double) allcount1[iall] / totall1;
       }
       if (iflag2 == 1) {
-	freq2[nsnp] = malloc(freq_size[nsnp] * sizeof(double)); 
 	if (freq_flag2 == 1) {
 	  freq2[nsnp][iall] = ffreq2[iall];
 	}
