@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 
 # Script to output genotype data from VCF file formatted for hmmIBD
 
