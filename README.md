@@ -27,31 +27,61 @@ which should yield the executable file *hmmIBD*, but other compilers should work
 
 ## Execution
 
-hmmIBD is run from the command line. It requires the user to supply two options when invoked; it can also take seven optional arguments:
+hmmIBD is run from the command line. Two options are required; every other parameter has a default and can be overridden. `hmmIBD -h` prints the list below with the compiled-in defaults.
 
 ```
-hmmIBD -i <input filename (for pop1, if using 2 pops)> -o <output filename> 
-     [-I <input file, pop2>] [-f <allele frequency file (pop1)>] [-F <allele freq file (pop2)>]
-     [-b <file with samples to skip>] [-m <max fit iteration>] [-n <max N generation>] [-g <file with sample pairs to use>] [-r <fixed IBD prior>]
+hmmIBD -i <genotype file> -o <output prefix> [options]
 ```
 Required options:
 - -i: File of genotype data. See below for format.
 - -o: Output file name. Two output files will be produced, with ".hmm.txt" 
       and ".hmm_fract.txt" appended to the supplied name. See below for details
 
-Optional options:
+Input / output options:
+- -I: File of genotype data from a second population; same format as for -i. Pairs are then formed between pop1 and pop2 samples. (added in 2.0.0)
 - -f: File of allele frequencies for the sample population. Format: tab-delimited, no header, one variant per row. Line format: `<chromosome (int)> <position (bp, int)> <allele 1 freq> <all 2 freq> [<all 3 freq>] ...` The genotype and frequency files must contain exactly the same variants, in the same order. If no file is supplied, allele frequencies are calculated from the input data file.
-- -I: File of genotype data from a second population; same format as for -i. (added in 2.0.0)
 - -F: File of allele frequencies for the second population; same format as for -f. (added in 2.0.0)
-- -m: Maximum number of fit iterations (defaults to 5).
 - -b: File of sample ids to exclude from all analysis. Format: no header, one id (string) per row. (Note: b stands for "bad samples".)
-- -g: File of sample pairs to analyze; all others are not processed by the HMM 	(but are still used to calculate allele frequencies). Format: no header,	tab-delimited, two sample ids (strings) per row. (Note: "g" stands for 	"good pairs".)
-- -n: Cap on the number of generations (floating point). Sets the maximum value for that parameter in the fit. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Specifying a small value will force the program to assume little recombination and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large.
-- -r: Supplies a fixed value of the IBD fraction (fract_sites_IBD) used to determine IBD segments. This is useful when using hmmIBD to detect or characterize selective sweeps. Without this, IBD segments are more likely to be detected when comparing relatives, since the overall relatedness biases the probability of detecting any one segment.  
+- -g: File of sample pairs to analyze; all others are not processed by the HMM (but are still used to calculate allele frequencies). Format: no header, tab-delimited, two sample ids (strings) per row. (Note: "g" stands for "good pairs".)
+
+Model options:
+- -m: Maximum number of fit iterations. Default 5.
+- -n: Cap on the number of generations (floating point). Sets the maximum value for that parameter in the fit. This is useful if you are interested in recent IBD and are working with a population with substantial linkage disequilbrium. Specifying a small value will force the program to assume little recombination and thus a low transition rate; otherwise it will identify the small blocks of LD as ancient IBD, and will force the number of generations to be large. Default: no cap.
+- -r: Supplies a fixed value of the IBD fraction (fract_sites_IBD) used to determine IBD segments; the fraction is then not re-estimated during the fit. This is useful when using hmmIBD to detect or characterize selective sweeps. Without this, IBD segments are more likely to be detected when comparing relatives, since the overall relatedness biases the probability of detecting any one segment. Default: fitted.
+- -N: Initial value of the number of generations parameter. Default 1.0.
+- -e: Genotype error rate. Default 0.001.
+- -R: Recombination rate, per bp per generation. Default 7.4e-7 (13.5 kb/cM, Miles et al. 2016).
+- -x: Maximum allele index per site; variants with a larger allele index are skipped. Default 8.
+- -c: Number of chromosomes; variants on higher-numbered chromosomes are skipped. Default 14 (P. falciparum).
+
+Site and pair filters:
+- -s: Minimum spacing between variants in bp; a variant closer than this to the previous one is skipped. Default 5.
+- -k: Minimum number of informative sites (sites where at least one sample carries a minor allele) for a pair to be analyzed. Default 10.
+- -d: Minimum discordance for a pair to be analyzed; set > 0 to skip identical pairs. Default 0.0.
+- -D: Maximum discordance for a pair to be analyzed; set < 1 to skip unrelated pairs. Default 1.0.
+
+Convergence (the fit stops when the -t criterion is met and either -T or -u is met):
+- -t: Threshold on the absolute change in the IBD fraction between iterations. Default 0.001.
+- -T: Threshold on the absolute change in the number of generations. Default 0.01.
+- -u: Threshold on the relative change in the number of generations. Default 0.001.
+
+Other:
+- -h: Print the option list with current defaults and exit.
+
+The values in effect are printed to standard output at the start of every run.
+
+## Tests
+
+`tests/test_cli_params.sh` builds `hmmIBD.c` and checks every command-line parameter against the
+bundled sample data: that it is accepted, reported at startup, and changes the computation as
+documented (e.g. `-k` and `-d/-D` select exactly the expected pairs; doubling `-R` while halving
+`-N` and `-T` leaves segments unchanged and halves `N_generation`). It also checks that default
+output is identical to `samp_data/output_Cambodia*` and that invalid values are rejected.
+Run it from the repository root; it exits 0 only if all tests pass.
 
 ## Input file formats
 
-Format for genotype file: tab-delimited text file, with one single nucleotide polymorphism (SNP) per line. The first two columns are the chromosome and position, followed by one sample per column. A header line, giving the sample names, is required. Genotypes are coded by number: -1 for missing data, 0 for the first allele, 1 for the second, etc. SNPs and indels (if you trust them) can thus be treated on an equal footing. The variants must be in chromosome and position order, and can have between two and eight alleles (more, if you feel like changing *max_allele* in the code). 
+Format for genotype file: tab-delimited text file, with one single nucleotide polymorphism (SNP) per line. The first two columns are the chromosome and position, followed by one sample per column. A header line, giving the sample names, is required. Genotypes are coded by number: -1 for missing data, 0 for the first allele, 1 for the second, etc. SNPs and indels (if you trust them) can thus be treated on an equal footing. The variants must be in chromosome and position order, and can have between two and eight alleles (more with the -x option). 
 
 The package includes a Python script, vcf2hmm.py, that extracts genotypes from VCF files into the appropriate format. It takes a VCF file name and an output filename (the latter without extensions) as input, along with optional file names that give lists of samples and sites to include. It outputs the genotypes into *filename*_seq.txt, and also outputs the alleles for each site (*filename*_allele.txt) and the allele frequencies (*filename*_freq.txt). Users might want to modify this script, depending on needs and details of the VCF file. It has the option of filtering out sites based on string in the FILTER field, as well as to omit all sites with an indel listed as ref or alt allele, but both of these options are turned off by flags at the beginning of the script. If filtering on FILTER is turned on, by default only sites with a 'PASS' value are accepted; any other behavior requires a change to the body of the code. Other filtering options in the script are a minimum genotyping call rate to accept a site (set to 80%), a minimum read depth to accept a genotype (set to 0), and minimum number of minor allele copies to accept the site (set to 0). All of these are set early in the script and can be changed by the user.
 

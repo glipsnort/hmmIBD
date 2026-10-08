@@ -16,40 +16,95 @@
 #include <float.h>
 #include <unistd.h>
 
+#define FN_SIZE 2048   // size of filename buffers
+
+// fgets that treats EOF / read error as fatal (used where a line is required)
+static void fgets_required(char *buf, int size, FILE *f, const char *what) {
+  if (fgets(buf, size, f) == NULL) {
+    fprintf(stderr, "Unexpected end of file or read error while reading %s\n", what);
+    exit(EXIT_FAILURE);
+  }
+}
+
+// Command-line argument parsing: whole string must be a number
+static int parse_int(const char *arg, int opt) {
+  char *end;
+  long v = strtol(arg, &end, 10);
+  if (arg == end || *end != 0) {
+    fprintf(stderr, "Invalid argument for -%c: %s (integer expected)\n", opt, arg);
+    exit(EXIT_FAILURE);
+  }
+  return (int) v;
+}
+
+static double parse_double(const char *arg, int opt) {
+  char *end;
+  double v = strtod(arg, &end);
+  if (arg == end || *end != 0) {
+    fprintf(stderr, "Invalid argument for -%c: %s (number expected)\n", opt, arg);
+    exit(EXIT_FAILURE);
+  }
+  return v;
+}
+
+// Helpers for the -g (good pairs) lookup: sample names indexed by sorted array + bsearch.
+typedef struct {const char *name; int idx;} name_idx;
+
+static int cmp_name_idx(const void *a, const void *b) {
+  return strcmp(((const name_idx *) a)->name, ((const name_idx *) b)->name);
+}
+
+// Locate all entries equal to name in a sorted name_idx array. Returns the count and
+// sets *lo to the first matching position (0 if none). Duplicated sample names, if any,
+// are all returned, matching the behaviour of the original exhaustive scan.
+static int find_name(const name_idx *arr, int n, const char *name, int *lo) {
+  name_idx key;
+  const name_idx *hit;
+  int i, j;
+  key.name = name;
+  key.idx = 0;
+  hit = bsearch(&key, arr, n, sizeof(name_idx), cmp_name_idx);
+  if (hit == NULL) {*lo = 0; return 0;}
+  i = j = (int) (hit - arr);
+  while (i > 0 && strcmp(arr[i-1].name, name) == 0) {i--;}
+  while (j + 1 < n && strcmp(arr[j+1].name, name) == 0) {j++;}
+  *lo = i;
+  return j - i + 1;
+}
+
 int main(int argc, char **argv) {
-  /* User-settable parameters */
-  const double eps = .001;         // error rate in genotype calls
-  const int min_inform = 10;       // minimum number of informative sites in a pairwise 
-                                   //  comparison (those w/ minor allele)
-  const double min_discord = 0.0;  // minimum discordance in comparison; set > 0 to skip identical pairs
-  const double max_discord = 1.0;  // set < 1 to skip unrelated pairs
-  const int nchrom = 14;           // 14 for falciparum
-  const int min_snp_sep = 5;       // skip next snp(s) if too close to last one; in bp
-  const double rec_rate = 7.4e-7; // 7.4e-5 cM/bp or 13.5 kb/cM Miles et al, Genome Res 26:1288-1299 (2016)
-  //  const double rec_rate = 5.8e-7;   // 5.8e-5 cM/bp, or 17kb/cM
-  const double fit_thresh_dpi = .001;
-  const double fit_thresh_dk = .01;
-  const double fit_thresh_drelk = .001;
+  /* User-settable parameters: defaults here, every one can be overridden on the command line */
+  double eps = .001;              // -e  error rate in genotype calls
+  int min_inform = 10;            // -k  minimum number of informative sites (those w/ minor allele) per pair
+  double min_discord = 0.0;       // -d  minimum discordance per pair; set > 0 to skip identical pairs
+  double max_discord = 1.0;       // -D  maximum discordance per pair; set < 1 to skip unrelated pairs
+  int nchrom = 14;                // -c  number of chromosomes (14 for falciparum)
+  int min_snp_sep = 5;            // -s  skip next snp(s) if too close to last one; in bp
+  double rec_rate = 7.4e-7;       // -R  per bp per generation; 7.4e-5 cM/bp or 13.5 kb/cM, Miles et al, Genome Res 26:1288 (2016)
+  double fit_thresh_dpi = .001;   // -t  convergence: |change in IBD fraction|
+  double fit_thresh_dk = .01;     // -T  convergence: |change in N generations|
+  double fit_thresh_drelk = .001; // -u  convergence: |relative change in N generations|
+  double k_rec_init = 1.0;        // -N  starting value for N generation parameter
+  int max_all = 8;                // -x  maximum allele index per site
+  int niter = 5;                  // -m  maximum number of fit iterations
   /* end user-settable parameters */
-  double k_rec_init = 1.0;          // starting value for N generation parameter
   double k_rec, k_rec_max = 0.;  // working and max value for same
-  const int max_all = 8;
-  int niter = 5;    // maximum number of iterations of fit; can be overriden by -m
   int max_snp = 30000;    // starting size for arrays -- increases if needed
-  char data_file1[128], data_file2[128], *erp;
-  char out_filebase[128], freq_file1[128], freq_file2[128], good_file[128], bad_file[128];
+  char data_file1[FN_SIZE], data_file2[FN_SIZE], out_filebase[FN_SIZE],
+     freq_file1[FN_SIZE], freq_file2[FN_SIZE], good_file[FN_SIZE], bad_file[FN_SIZE];
+  char *erp;
   int max_bad = 100;
   int max_good = 200;
   int linesize = 4000;
-  char *newLine1, *newLine2, *token, *running, **sample1, **sample2, *head;
-  char file[64], **bad_samp=NULL, **good_pair[2]={NULL};
-  int itoken, nsample1=0, nsample2=0, isamp, chr, sum, iall, all, js, snp_ind;
+  char *newLine1, *newLine2 = NULL, *token, *running, **sample1, **sample2, *head;
+  char file[FN_SIZE], **bad_samp=NULL, **good_pair[2]={NULL};
+  int itoken, nsample1=0, nsample2=0, isamp, chr, sum, iall, all, js, snp_ind = 0;
   int **geno1, **geno2, chr2, pos2, majall, npair_report;
   double **discord, pright, seq_ibd_fb=0, seq_dbd_fb=0, p_ibd, fmean, fmeani, fmeanj;
   double **freq1=NULL, **freq2=NULL, *ffreq1=NULL, *ffreq2=NULL, xisum, xi[2][2], trans_pred, trans_obs;
   double *phi[2], pinit[2], pi[2], *b[2], a[2][2], ptrans, *alpha[2], *beta[2], *scale;
   double maxval, max_phi=0, max_phiL, seq_ibd, seq_dbd, count_ibd_fb, count_dbd_fb;
-  double gamma[2], last_pi=0, last_prob=0, last_krec=0, delpi, delk, maxfreq, delprob;
+  double gamma[2], last_pi=0, last_krec=0, delpi, delk, maxfreq;
   FILE *inf1=NULL, *inf2=NULL, *outf=NULL, *pf=NULL, *ff1=NULL, *ff2=NULL;
   int *diff=NULL, *same_min=NULL, jsamp, *allcount1=NULL, *allcount2=NULL;
   int *use_sample1=NULL, *use_sample2=NULL;
@@ -65,16 +120,46 @@ int main(int argc, char **argv) {
   pinit[0] = 0.5;  // flat prior
   pinit[1] = 0.5;  
   
-  char usage_string[512];
-  strcpy(usage_string, "Usage: hmm -i <input file, pop1> -o <output filename> [-I <input file, pop2>] \n"); 
-  strcat(usage_string, "[-m <max fit iter>] [-f <allele freq file, pop1>] [-F <allele freq file, pop2>]\n");
-  strcat(usage_string,  "[-b <file with samples to skip>] [-n <max N generation>]");
-  strcat(usage_string, "  [-g <file with sample pairs to use>] [-r <fixed IBD prior>]\n");
+  char usage_string[4096];
+  snprintf(usage_string, sizeof(usage_string),
+    "Usage: hmmIBD -i <genotype file> -o <output prefix> [options]\n"
+    "Input / output:\n"
+    "  -i <file>   genotype file, pop1 (required)\n"
+    "  -o <prefix> output prefix; writes <prefix>.hmm.txt and <prefix>.hmm_fract.txt (required)\n"
+    "  -I <file>   genotype file, pop2: compare pop1 samples against pop2 samples\n"
+    "  -f <file>   allele frequency file, pop1 [computed from data]\n"
+    "  -F <file>   allele frequency file, pop2 [computed from data]\n"
+    "  -b <file>   samples to exclude, one id per line [none]\n"
+    "  -g <file>   sample pairs to analyze, two tab-separated ids per line [all pairs]\n"
+    "Model:\n"
+    "  -m <int>    maximum fit iterations [%d]\n"
+    "  -n <float>  cap on N generations during fit [none]\n"
+    "  -r <float>  fixed IBD fraction (prior); disables its re-estimation [fitted]\n"
+    "  -N <float>  initial N generations [%g]\n"
+    "  -e <float>  genotype error rate [%g]\n"
+    "  -R <float>  recombination rate, per bp per generation [%g]\n"
+    "  -x <int>    maximum allele index per site [%d]\n"
+    "  -c <int>    number of chromosomes; variants on higher-numbered chromosomes are skipped [%d]\n"
+    "Site and pair filters:\n"
+    "  -s <int>    minimum spacing between variants, bp [%d]\n"
+    "  -k <int>    minimum informative sites per pair [%d]\n"
+    "  -d <float>  minimum discordance per pair [%g]\n"
+    "  -D <float>  maximum discordance per pair [%g]\n"
+    "Convergence (fit stops when -t is met and either -T or -u is met):\n"
+    "  -t <float>  threshold on |change in IBD fraction| [%g]\n"
+    "  -T <float>  threshold on |change in N generations| [%g]\n"
+    "  -u <float>  threshold on |relative change in N generations| [%g]\n"
+    "  -h          print this help and exit\n",
+    niter, k_rec_init, eps, rec_rate, max_all, nchrom, min_snp_sep, min_inform,
+    min_discord, max_discord, fit_thresh_dpi, fit_thresh_dk, fit_thresh_drelk);
 
   opterr = 0;
   iflag1 = iflag2 = oflag = freq_flag1 = freq_flag2 = bflag = gflag = nflag = rflag = 0;
-  while ( (c = getopt(argc, argv, ":f:F:i:I:o:m:b:g:n:r:")) != -1) {
+  while ( (c = getopt(argc, argv, ":f:F:i:I:o:m:x:b:g:n:r:N:e:R:c:s:k:d:D:t:T:u:h")) != -1) {
     switch(c) {
+    case 'h':
+      fprintf(stdout, "%s", usage_string);
+      exit(EXIT_SUCCESS);
     case 'f':
       freq_flag1 = 1;
       strcpy(freq_file1, optarg);
@@ -91,23 +176,28 @@ int main(int argc, char **argv) {
       gflag = 1;
       strcpy(good_file, optarg);
       break;
-    case 'm':
-      niter = strtol(optarg, &erp, 10);
-      if (optarg == erp) {
-	fprintf(stderr, "Invalid argument %s\n", optarg);
-	exit(EXIT_FAILURE);
-      }
-      break;
+    case 'm': niter = parse_int(optarg, c); break;
+    case 'x': max_all = parse_int(optarg, c); break;
+    case 'c': nchrom = parse_int(optarg, c); break;
+    case 's': min_snp_sep = parse_int(optarg, c); break;
+    case 'k': min_inform = parse_int(optarg, c); break;
     case 'n':
       nflag = 1;
-      k_rec_max = strtod(optarg, NULL);
+      k_rec_max = parse_double(optarg, c);
       break;
     case 'r':
       rflag = 1;
-      pinit[0] = strtod(optarg, NULL);
+      pinit[0] = parse_double(optarg, c);
       pinit[1] = 1. - pinit[0];
-      
       break;
+    case 'N': k_rec_init = parse_double(optarg, c); break;
+    case 'e': eps = parse_double(optarg, c); break;
+    case 'R': rec_rate = parse_double(optarg, c); break;
+    case 'd': min_discord = parse_double(optarg, c); break;
+    case 'D': max_discord = parse_double(optarg, c); break;
+    case 't': fit_thresh_dpi = parse_double(optarg, c); break;
+    case 'T': fit_thresh_dk = parse_double(optarg, c); break;
+    case 'u': fit_thresh_drelk = parse_double(optarg, c); break;
     case 'i':
       iflag1 = 1;
       strcpy(data_file1, optarg);
@@ -132,6 +222,22 @@ int main(int argc, char **argv) {
   if (optind != argc || iflag1 == 0 || oflag == 0) {
     fprintf(stderr, "%s", usage_string);
     exit(EXIT_FAILURE);
+  }
+  if (niter < 1) {fprintf(stderr, "-m must be >= 1\n"); exit(EXIT_FAILURE);}
+  if (max_all < 1) {fprintf(stderr, "-x must be >= 1\n"); exit(EXIT_FAILURE);}
+  if (nchrom < 1) {fprintf(stderr, "-c must be >= 1\n"); exit(EXIT_FAILURE);}
+  if (min_snp_sep < 0) {fprintf(stderr, "-s must be >= 0\n"); exit(EXIT_FAILURE);}
+  if (min_inform < 0) {fprintf(stderr, "-k must be >= 0\n"); exit(EXIT_FAILURE);}
+  if (eps < 0 || eps >= 1) {fprintf(stderr, "-e must be in [0, 1)\n"); exit(EXIT_FAILURE);}
+  if (rec_rate <= 0) {fprintf(stderr, "-R must be > 0\n"); exit(EXIT_FAILURE);}
+  if (k_rec_init <= 0) {fprintf(stderr, "-N must be > 0\n"); exit(EXIT_FAILURE);}
+  if (nflag == 1 && k_rec_max <= 0) {fprintf(stderr, "-n must be > 0\n"); exit(EXIT_FAILURE);}
+  if (rflag == 1 && (pinit[0] <= 0 || pinit[0] >= 1)) {fprintf(stderr, "-r must be in (0, 1)\n"); exit(EXIT_FAILURE);}
+  if (min_discord < 0 || max_discord > 1 || min_discord > max_discord) {
+    fprintf(stderr, "-d/-D must satisfy 0 <= -d <= -D <= 1\n"); exit(EXIT_FAILURE);
+  }
+  if (fit_thresh_dpi < 0 || fit_thresh_dk < 0 || fit_thresh_drelk < 0) {
+    fprintf(stderr, "-t/-T/-u must be >= 0\n"); exit(EXIT_FAILURE);
   }
   if (freq_flag2 == 1 && iflag2 == 0) {
     fprintf(stderr, "Inconsistent options: frequency file for 2nd population specified");
@@ -250,24 +356,28 @@ int main(int argc, char **argv) {
     inf2 = fopen(data_file2, "r");
     if (inf2 == NULL) {fprintf(stderr, "Could not open input file %s\n", data_file2); exit(EXIT_FAILURE);}
   }
-  sprintf(file, "%s.hmm.txt", out_filebase);
+  if (snprintf(file, FN_SIZE, "%s.hmm.txt", out_filebase) >= FN_SIZE) {
+    fprintf(stderr, "Output prefix too long\n"); exit(EXIT_FAILURE);
+  }
   outf = fopen(file, "w");
   if (outf == NULL) {fprintf(stderr, "Could not open output file %s\n", file); exit(EXIT_FAILURE);}
   fprintf(outf, "sample1\tsample2\tchr\tstart\tend\tdifferent\tNsnp\n");
-  sprintf(file, "%s.hmm_fract.txt", out_filebase);
+  if (snprintf(file, FN_SIZE, "%s.hmm_fract.txt", out_filebase) >= FN_SIZE) {
+    fprintf(stderr, "Output prefix too long\n"); exit(EXIT_FAILURE);
+  }
   pf = fopen(file, "w");
   if (pf == NULL) {fprintf(stderr, "Could not open output file %s\n", file); exit(EXIT_FAILURE);}
   fprintf(pf, "sample1\tsample2\tN_informative_sites\tdiscordance\tlog_p\tN_fit_iteration\tN_generation");
   fprintf(pf, "\tN_state_transition\tseq_shared_best_traj\tfract_sites_IBD\tfract_vit_sites_IBD\n");
   
   // Check line size
-  fgets(newLine1, linesize, inf1); // header1
+  fgets_required(newLine1, linesize, inf1, "header of pop1 genotype file"); // header1
   while (strlen(newLine1) > (unsigned long) linesize-2) {
     fseek(inf1, 0, 0);
     linesize *= 2;
     free(newLine1);
     newLine1 = malloc((linesize+1) * sizeof(char));
-    fgets(newLine1, linesize, inf1); // header1
+    fgets_required(newLine1, linesize, inf1, "header of pop1 genotype file"); // header1
   }
   newLine1[strcspn(newLine1, "\r\n")] = 0;  
   head = malloc((linesize+1) * sizeof(char));
@@ -314,17 +424,18 @@ int main(int argc, char **argv) {
       isamp++;
     }
   }
+  fflush(stdout);   // make the excluded-sample list visible when stdout is a file/pipe
 
   // Note: using newLine1 for both files until we start reading genotypes. This way newLine2 only
   //  has to be allocated once, after both headers have been read and the line length possibly increased
   if (iflag2 == 1) {
-    fgets(newLine1, linesize, inf2); // header2
+    fgets_required(newLine1, linesize, inf2, "header of pop2 genotype file"); // header2
     while (strlen(newLine1) > (unsigned long) linesize-2) {
       fseek(inf2, 0, 0);
       linesize *= 2;
       free(newLine1);
       newLine1 = malloc((linesize+1) * sizeof(char));
-      fgets(newLine1, linesize, inf2); // header2
+      fgets_required(newLine1, linesize, inf2, "header of pop2 genotype file"); // header2
     }
     newLine2 = malloc((linesize+1) * sizeof(char));
     newLine1[strcspn(newLine1, "\r\n")] = 0;  
@@ -383,6 +494,7 @@ int main(int argc, char **argv) {
 	isamp++;
       }
     }
+    fflush(stdout);
   }
   else {
     // Single pop
@@ -392,6 +504,12 @@ int main(int argc, char **argv) {
   fprintf(stdout, "Maximum fit iterations allowed: %d\n", niter);
   fprintf(stdout, "Minimum marker spacing (bp): %d\n", min_snp_sep);
   fprintf(stdout, "Minimum informative markers: %d\n", min_inform);
+  fprintf(stdout, "Discordance accepted in range [%g, %g]\n", min_discord, max_discord);
+  fprintf(stdout, "Number of chromosomes: %d\n", nchrom);
+  fprintf(stdout, "Maximum allele index: %d\n", max_all);
+  fprintf(stdout, "Recombination rate (per bp per generation): %g\n", rec_rate);
+  fprintf(stdout, "Initial N generations: %g\n", k_rec_init);
+  fprintf(stdout, "Fit thresholds: dpi %g, dk %g, drelk %g\n", fit_thresh_dpi, fit_thresh_dk, fit_thresh_drelk);
   if (rflag == 1) {
     fprintf(stdout, "IBD fract fixed at %.2f for Viterbi calculation\n", pinit[0]);
   }
@@ -425,21 +543,65 @@ int main(int argc, char **argv) {
 
   // All pairs are to be used by default, unless we've read a file of good pairs
   //   Except single-pop samples should not be compared with themselves
-  for (isamp = 0; isamp < nsample1; isamp++) {
-    jstart = (iflag2 == 1) ? 0 : isamp+1;
-    for (jsamp = jstart; jsamp < nsample2; jsamp++) {
-      if (gflag == 1) {
-	use_pair[isamp][jsamp] = 0;
-	for (ipair = 0; ipair < ngood; ipair++) {
-	  if ( (strcmp(good_pair[0][ipair], sample1[isamp]) == 0 && 
-		strcmp(good_pair[1][ipair], sample2[jsamp]) == 0) ||
-	       (strcmp(good_pair[0][ipair], sample2[jsamp]) == 0 && 
-		strcmp(good_pair[1][ipair], sample1[isamp]) == 0) ) {
-	    use_pair[isamp][jsamp] = 1;
-	  }
+  if (gflag == 1) {
+    // Index sample names once (sorted array + binary search) and set use_pair directly
+    // from the good-pair list. Same result as testing every (i,j) cell against every
+    // listed pair in either order, but O((n + ngood) log n) instead of O(n^2 * ngood),
+    // which took hours for ~10^4 samples and ~10^4 pairs. use_pair is calloc'd (all 0).
+    name_idx *nidx1, *nidx2;
+    int lo_a, lo_b, n_a, n_b, ka, kb, gi, gj;
+    nidx1 = malloc(nsample1 * sizeof(name_idx));
+    assert(nidx1 != NULL);
+    for (isamp = 0; isamp < nsample1; isamp++) {
+      nidx1[isamp].name = sample1[isamp];
+      nidx1[isamp].idx = isamp;
+    }
+    qsort(nidx1, nsample1, sizeof(name_idx), cmp_name_idx);
+    if (iflag2 == 1) {
+      nidx2 = malloc(nsample2 * sizeof(name_idx));
+      assert(nidx2 != NULL);
+      for (jsamp = 0; jsamp < nsample2; jsamp++) {
+	nidx2[jsamp].name = sample2[jsamp];
+	nidx2[jsamp].idx = jsamp;
+      }
+      qsort(nidx2, nsample2, sizeof(name_idx), cmp_name_idx);
+    }
+    else {
+      nidx2 = nidx1;
+    }
+    for (ipair = 0; ipair < ngood; ipair++) {
+      // orientation 1: first name in pop1, second in pop2
+      n_a = find_name(nidx1, nsample1, good_pair[0][ipair], &lo_a);
+      n_b = find_name(nidx2, nsample2, good_pair[1][ipair], &lo_b);
+      for (ka = 0; ka < n_a; ka++) {
+	for (kb = 0; kb < n_b; kb++) {
+	  gi = nidx1[lo_a+ka].idx;
+	  gj = nidx2[lo_b+kb].idx;
+	  if (iflag2 == 1) {use_pair[gi][gj] = 1;}
+	  else if (gi < gj) {use_pair[gi][gj] = 1;}
+	  else if (gj < gi) {use_pair[gj][gi] = 1;}
 	}
       }
-      else {
+      // orientation 2: first name in pop2, second in pop1
+      n_a = find_name(nidx2, nsample2, good_pair[0][ipair], &lo_a);
+      n_b = find_name(nidx1, nsample1, good_pair[1][ipair], &lo_b);
+      for (ka = 0; ka < n_a; ka++) {
+	for (kb = 0; kb < n_b; kb++) {
+	  gj = nidx2[lo_a+ka].idx;
+	  gi = nidx1[lo_b+kb].idx;
+	  if (iflag2 == 1) {use_pair[gi][gj] = 1;}
+	  else if (gi < gj) {use_pair[gi][gj] = 1;}
+	  else if (gj < gi) {use_pair[gj][gi] = 1;}
+	}
+      }
+    }
+    if (nidx2 != nidx1) {free(nidx2);}
+    free(nidx1);
+  }
+  else {
+    for (isamp = 0; isamp < nsample1; isamp++) {
+      jstart = (iflag2 == 1) ? 0 : isamp+1;
+      for (jsamp = jstart; jsamp < nsample2; jsamp++) {
 	if (isamp != jsamp || iflag2 == 1) {
 	  use_pair[isamp][jsamp] = 1;
 	}
@@ -451,7 +613,7 @@ int main(int argc, char **argv) {
   while (fgets(newLine1, linesize, inf1) != NULL) {
     newLine1[strcspn(newLine1, "\r\n")] = 0;  
     if (iflag2 == 1) {
-      fgets(newLine2, linesize, inf2);
+      fgets_required(newLine2, linesize, inf2, "pop2 genotype file (fewer lines than pop1 file?)");
       newLine2[strcspn(newLine2, "\r\n")] = 0;  
     }
     if (nsnp == max_snp) {
@@ -588,7 +750,7 @@ int main(int argc, char **argv) {
       for (iall = 0; iall <= max_all; iall++) {
 	ffreq1[iall] = 0;
       }
-      fgets(newLine1, linesize, ff1);
+      fgets_required(newLine1, linesize, ff1, "pop1 frequency file (fewer lines than genotype file?)");
       fpos = fchr = 0;
       for (running = newLine1, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
       	if (itoken == 0) {
@@ -621,7 +783,7 @@ int main(int argc, char **argv) {
       for (iall = 0; iall <= max_all; iall++) {
 	ffreq2[iall] = 0;
       }
-      fgets(newLine2, linesize, ff2);
+      fgets_required(newLine2, linesize, ff2, "pop2 frequency file (fewer lines than genotype file?)");
       fpos = fchr = 0;
       for (running = newLine2, itoken = 0; (token = strsep(&running, "\t")) != NULL; itoken++) {
       	if (itoken == 0) {
@@ -746,6 +908,7 @@ int main(int argc, char **argv) {
   }  
   fprintf(stdout, "sample pairs analyzed (filtered for discordance and informative markers): %d\n", 
 	  nuse_pair);
+  fflush(stdout);   // nothing else is printed until the pair loop finishes
 
   maxlen = 0;
   for (chr = 1; chr <= nchrom; chr++) {
@@ -769,7 +932,6 @@ int main(int argc, char **argv) {
       if (use_sample2[jsamp] == 0) {continue;}
       sum = diff[ipair] + same_min[ipair];
       if (use_pair[isamp][jsamp] == 1) {
-	last_prob = 0;
 	last_pi = pi[0] = pinit[0];  // initialize with prior
 	pi[1] = pinit[1];
 	last_krec = k_rec = k_rec_init;
@@ -968,10 +1130,8 @@ int main(int argc, char **argv) {
 	  delpi = pi[0] - last_pi;
 	  delk = k_rec - last_krec;
 	  if (nflag == 1 && k_rec > k_rec_max) {delk = k_rec_max - last_krec;}
-	  delprob = max_phi - last_prob;
 	  last_pi = pi[0];
 	  last_krec = k_rec;
-	  last_prob = max_phi;
 
 	  // Evaluate fit
 	  if (fabs(delpi) < fit_thresh_dpi && 
